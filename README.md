@@ -24,3 +24,5 @@ where:
 - Most of these features are going to be replicated from the EarthBound ROM Explorer such as: addresses and labels
 - Turn the output file into a CCScript block code that can be referenced as a label
 - Make table addresses turn into labels so it can be easily identifiable
+- BRK opcodes are appearing when there are inconsistent SEP/REP within the routine when parsing. 
+  - When encountering BRK opcodes, try to add a buffer to detect them and merge with the previous opcode and update the P register
