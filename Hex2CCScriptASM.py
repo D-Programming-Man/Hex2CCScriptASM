@@ -1,39 +1,38 @@
 #!/usr/bin/env python
 import sys
 
-def strToHex(str):
-  alphaDict = {"A": 10, "B": 11, "C": 12, "D": 13, "E": 14, "F": 15}
+# Translates a string hex number into an integer
+def strToHex(numbRepDict, byte):
   hiNybble = 0
   loNybble = 0
   
-  if len(str) == 2:
-    if str[0].isalpha():
-      if str[0] in alphaDict:
-        hiNybble = alphaDict[str[0]] * 16
-      else:
-        print("Letter not supported in Hex: " + str[0])
-        sys.exit()
+  if len(byte) == 2:
+    if byte[0] in numbRepDict:
+      hiNybble = numbRepDict[byte[0]] * 16
     else:
-      hiNybble = int(str[0]) * 16
+      print("Symbol not supported in Hex: " + byte[0])
+      sys.exit()
       
-    if str[1].isalpha():
-      if str[1] in alphaDict:
-        loNybble = alphaDict[str[1]]
-      else:
-        print("Letter not supported in Hex: " + str[1])
-        sys.exit()
+    if byte[1] in numbRepDict:
+      loNybble = numbRepDict[byte[1]]
     else:
-      loNybble = int(str[1])
+      print("Symbol not supported in Hex: " + byte[1])
+      sys.exit()
       
     return hiNybble + loNybble
     
   else:
-    print("Parameter pass to strToHex() is not exactly of length two: " + str)
+    print("Parameter pass to strToHex() is not exactly of length two: " + byte)
     sys.exit()
 
 if __name__ == "__main__":
   inputFile = open(sys.argv[1], "r")
   out = open(sys.argv[2], "w")
+  
+  # Numberical symbols in hex
+  numbRepDict = {"0": 0, "1": 1, "2": 2, "3": 3, "4": 4,
+  "5": 5, "6": 6, "7": 7, "8": 8, "9": 9,"A": 10, "B": 11,
+  "C": 12, "D": 13, "E": 14, "F": 15}
   
   # ASM Opcodes that don't take a parameter
   noParamOps = ["0A", "00", "18", "D8",
@@ -48,7 +47,7 @@ if __name__ == "__main__":
   "8A", "98", "BA", "9A",
   "9B", "BB", "5B", "7B",
   "1B", "3B", "CB", "42",
-  "EB", "FB", "7A"]
+  "EB", "FB", "7A", "6A"]
   
   # ASM Opcodes that take a byte parameter
   oneParamOps = ["69", "65", "72", "67",
@@ -69,7 +68,11 @@ if __name__ == "__main__":
   "95", "81", "91", "97",
   "86", "96", "84", "94",
   "64", "74", "14", "04",
-  "A7", "E5"]
+  "A7", "E5", "7E", "E7",
+  "71", "C3", "21", "01",
+  "36", "07", "76", "D5",
+  "77", "F7", "12", "F1",
+  "51", "03"]
   
   # ASM Opcodes that take 2 byte parameters
   twoParamOps = ["69", "6D", "7D", "79",
@@ -84,10 +87,10 @@ if __name__ == "__main__":
   "AE", "A0", "AC", "B4",
   "BC", "4E", "5E", "09",
   "0D", "F4", "62", "2E",
-  "6E", "E9", "ED",
+  "6E", "E9", "ED", "FE",
   "FD", "8D", "9D", "99",
   "8E", "8C", "9C", "9E",
-  "1C", "0C"]
+  "1C", "0C", "1E", "59"]
   
   # ASM Opcodes that take 3 byte parameters
   threeParamOps = ["CF", "DF", "4F", "5C",
@@ -108,7 +111,7 @@ if __name__ == "__main__":
   "A0": "LDY_i", "09": "ORA_i", "E9": "SBC_i", "6D": "ADC_a", "6F": "ADC_al",
   "65": "ADC_d", "72": "ADC_di", "67": "ADC_dil", "75": "ADC_dx", "7D": "ADC_x",
   "7F": "ADC_xl", "79": "ADC_y", "73": "ADC_s", "25": "AND_d", "2D": "AND_a",
-  "2F": "AND_al", "3D": "AND_x", "2F": "AND_xl", "0A": "ASL", "0E": "ASL_a",
+  "2F": "AND_al", "3D": "AND_x", "3F": "AND_xl", "0A": "ASL", "0E": "ASL_a",
   "06": "ASL_d", "24": "BIT_d", "34": "BIT_dx", "2C": "BIT_a", "3C": "BIT_x",
   "90": "BCC", "B0": "BCS", "F0": "BEQ", "D0": "BNE", "30": "BMI", "10": "BPL",
   "50": "BVC", "70": "BVS", "80": "BRA", "82": "BRL", "00": "BRK", "18": "CLC",
@@ -139,7 +142,11 @@ if __name__ == "__main__":
   "A8": "TAY", "8A": "TXA", "98": "TYA", "BA": "TSX", "9A": "TXS", "BB": "TYX",
   "5B": "TCD", "7B": "TDC", "1B": "TCS", "3B": "TSC", "1C": "TRB_a", "14": "TRB_d",
   "0C": "TSB_a", "04": "TSB_d", "CB": "WAI", "42": "WDM", "EB": "XBA", "FB": "XCE",
-  "9B": "TXY", "A7": "LDA_dl"}
+  "9B": "TXY", "A7": "LDA_dl", "7E": "ROR_x", "E7": "SBC_dl", "71": "ADC_diy",
+  "C3": "CMP_s", "21": "AND_dxi", "01": "ORA_dxi", "36": "ROL_dx", "07": "ORA_dl",
+  "1E": "ASL_x", "76": "ROR_dx", "FE": "INC_x", "D5": "CMP_dx", "77": "ADC_dly",
+  "F7": "SBC_dly", "59": "EOR_y", "12": "ORA_di", "03": "ORA_s", "F1": "SBC_diy",
+  "51": "EOR_diy"}
   
   # All Opcodes that are 8-bit A/X/Y register dependent
   specialOps = {"69": "ADC_8", "29": "AND_8", "89": "BIT_8", "C9": "CMP_8",
@@ -147,17 +154,13 @@ if __name__ == "__main__":
   "A0": "LDY_8", "09": "ORA_8", "E9": "SBC_8"}
   
   '''
-  All routines that uses the REP opcode before returning to the routine that called it
+  All routines that uses the SEP opcode before returning to the routine that called it
   Some routines do a SEP/REP and then run a routine that changes the P register
     and so when it returns the P register is inconsistant and so that's why some
     of the routines in the EB ROM Explorer has weird opcodes in place
-  Key = JSR/JSL (address), Value = byte param used for REP
-  '''
-  PRegREPChangerDict = {"JSR (0xACF8)": "20", "JSR (0x1F8A)": "31"}
-  
-  # All routines that uses the SEP opcode before returning to the routine that called it
   # Key = JSR/JSL (address), Value = byte param used for SEP
-  PRegSEPChangerDict = {}
+  '''
+  PRegSEPChangerDict = {"JSL (0xC2B66A)": "20"}
   
   PRegState = 0x00 # assume P register is 0x00 at the start
   asmOpBytes = inputFile.read().split() # Separate each byte into a list
@@ -173,27 +176,31 @@ if __name__ == "__main__":
     # This section is where we add the parameters to the file
     if internalByteSize > 0 and byteSizeParam >= 1:
       if currentOp == 0xC2: # REP
-        PRegState = (~ strToHex(byte)) & PRegState
+        PRegState = (~ strToHex(numbRepDict, byte)) & PRegState
       
       if currentOp == 0xE2: # SEP
-        PRegState = strToHex(byte) | PRegState
-        
+        PRegState = strToHex(numbRepDict, byte) | PRegState
+      
       byteParamList.insert(0, byte)
       internalByteSize = internalByteSize - 1
       if internalByteSize == 0:
         opParam = "".join(byteParamList)
-        out.write("(0x" + opParam + ")\n")
         pRegRoutine = pRegRoutine + "(0x" + opParam + ")"
-        if pRegRoutine in PRegREPChangerDict:
-          PRegState = (~ strToHex(PRegREPChangerDict[pRegRoutine])) & PRegState
-        #if pRegRoutine in PRegSEPChangerDict:
-        #  PRegState = strToHex(PRegSEPChangerDict[pRegRoutine]) | PRegState
+        if pRegRoutine in PRegSEPChangerDict:
+          PRegState = strToHex(numbRepDict, PRegSEPChangerDict[pRegRoutine]) | PRegState
+        
+        # Assume most of the JSR/JSL/BRA opcodes will change P register
+        # The BRA opcode is on a temporary solution, fix this when you have the addresses
+          # working since we can use that to keep track of the state of the P register
+        elif currentOp == 0x20 or currentOp == 0x22 or currentOp == 0x80:
+          PRegState = (~ 0x30) & PRegState
+        out.write("(0x" + opParam + ")\n")
         byteParamList.clear()
         pRegRoutine = ""
       continue
       
     # This section is where we determine how many params the Opcode takes
-    currentOp = strToHex(byte)
+    currentOp = strToHex(numbRepDict, byte)
     special8BitOps = False
     if byte in noParamOps:
       byteSizeParam = 0
