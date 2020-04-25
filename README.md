@@ -21,8 +21,11 @@ where:
   - If you run this, the (output file) will contain this: REP (0x31)
   
 ### Future Plans:
-- Most of these features are going to be replicated from the EarthBound ROM Explorer such as: addresses and labels
-- Turn the output file into a CCScript block code that can be referenced as a label
+- ~Most of these features are going to be replicated from the EarthBound ROM Explorer such as: addresses and labels~
+  - How the labels are ordered aren't the same, but the branching of the labels are the same. This is a good thing!
+- ~Turn the output file into a CCScript block code that can be referenced as a label~
 - Make table addresses turn into labels so it can be easily identifiable
+  - I'm not sure what to make of this myself, but hopefully this idea comes back to me.
 - BRK opcodes are appearing when there are inconsistent SEP/REP within the routine when parsing. 
   - When encountering BRK opcodes, try to add a buffer to detect them and merge with the previous opcode and update the P register
+- JMP opcodes are not working since they are address specific rather than offset addresses like branch opcodes, e.g. BRA, BEQ, etc. 
