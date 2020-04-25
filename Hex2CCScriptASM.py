@@ -2,6 +2,11 @@
 import sys
 from math import ceil
 
+'''
+TODO: . Fix JMP/JMP_l address jumping since they work on a specific address rather than offsets
+        like any of the branch opcodes like BRA, BEQ, etc.
+'''
+
 # Turns hex numbers that are represented in string into actual hex numbers
 # The hexNumb parameter needs to have the "0x" prefix ommited when passed to this function
 # because parsing in the byte values from the input file does not have the "0x" prefix
@@ -15,7 +20,7 @@ def strToHex(numbRepDict, hexNumb, unsignedFlag=True):
   else:
     bitLength = ceil(len(hexNumb) / 2) * 8
     if hexNumbReturn & (1 << (bitLength - 1)) == (1 << (bitLength - 1)):
-      hexNumbReturn *= -1
+      hexNumbReturn = (hexNumbReturn - strToHex(numbRepDict, "F" * int((bitLength / 4)))) - 1
     return hexNumbReturn
 
 if __name__ == "__main__":
@@ -47,7 +52,8 @@ if __name__ == "__main__":
   "8A", "98", "BA", "9A",
   "9B", "BB", "5B", "7B",
   "1B", "3B", "CB", "42",
-  "EB", "FB", "7A", "6A"]
+  "EB", "FB", "7A", "6A",
+  "0B", ]
   
   # ASM Opcodes that take a byte parameter
   oneParamOps = ["69", "65", "72", "67",
@@ -153,12 +159,17 @@ if __name__ == "__main__":
   "E0": "CPX_8", "C0": "CPY_8", "49": "EOR_8", "A9": "LDA_8", "A2": "LDX_8",
   "A0": "LDY_8", "09": "ORA_8", "E9": "SBC_8"}
   
+  # All branch/jump opcodes in hex representation
+  # Jump opcodes are harder to impmement because they go to a specific address rather than an
+  # offset of the next executable opcode's address
+  branchOps = [0x90, 0xB0, 0xF0, 0xD0, 0x30, 0x10, 0x50, 0x70, 0x80, 0x82] # 0x4C, 0x5C
+  
   '''
   All routines that uses the SEP opcode before returning to the routine that called it
   Some routines do a SEP/REP and then run a routine that changes the P register
     and so when it returns the P register is inconsistant and so that's why some
     of the routines in the EB ROM Explorer has weird opcodes in place
-  # Key = JSR/JSL (address), Value = byte param used for SEP
+  # Key = JSR/JSL (address), Value = byte param used for SEP opcode in that routine when returning
   '''
   PRegSEPChangerDict = {"JSL (0xC2B66A)": "20"}
   
@@ -166,18 +177,34 @@ if __name__ == "__main__":
   currentOp = 0x00  # Current ASM Opcode
   byteSizeParam = 0 # How many bytes does the current ASM Opcode require
   internalByteSize = 0 # How many bytes left do we need to decode for that Opcode
-  byteParamList = [] # The concat string of the opcode to be written to a file
+  byteParamList = [] # The concat string of the opcode and its parameters
   pRegRoutine = "" # Some routines changes the P register when jumping back
                    # Need to keep track of routines that does this
-                   
-  address = 0    # Used as the key to the parsedOps dictionary. I would usually use a program counter to keep track of the
-                 # the lines, but since we have opcodes like BRA (0x03), this would mean that we are jumping forwards 3 bytes after the BRA parameter.
-                 # In this sense, we could use arithmetic to pattern match the address to add labels at those dictionary entries
-  labelNumbs = 0 # These are labels that will be inserted when it is neccessary 
-  parsedOps = {} # Dictionary of lines to parsed ops
-                 # Key = address, Value = (Label: ) opcode
-                 # The standard 65816 ASM branch opcodes will be replaced with their _a counterparts in CCSript to make
-                 # things easier to find when you want to view the output file 
+  
+  # Used as the key to the parsedOps/labelAddr dictionary. I would usually use a program counter to keep track of the
+  # the lines, but since we have opcodes like BRA (0x03), this would mean that we are jumping forwards 3 bytes after the BRA parameter.
+  # In this sense, we could use arithmetic to pattern match the address to add labels at those dictionary entries  
+  address = 0
+                 
+  # These are labels that will be inserted when we encounter a branch opcode that branches to that
+  # address and so we will replace the numerical hex value in the opcode's parameter with the label
+  # instead. We also modify the branch opcode by adding the _a suffix to it.
+  labelNumbs = 0
+  
+  # Dictionary of address to parsed ops
+  # Key = address, Value =  opcode
+  # The standard 65816 ASM branch opcodes will be replaced with their _a counterparts in CCSript to make
+  # things easier to find when you want to view the output file
+  parsedOps = {}
+  
+  # Dictionary that keeps track of addresses where to insert the Label
+  # Key = address, Value = Label
+  labelAddr = {}
+  
+  # Alternatively, I could combine both of these dictionaries and have a tuple as the value of the address.
+  # Will think about this later
+  # someDict[address] = (label, parsed opcode and parameters, P register state)
+  
   out.write("Your_Routine:{\n")
   
   for byte in asmOpBytes:
@@ -190,27 +217,51 @@ if __name__ == "__main__":
       if currentOp == 0xE2: # SEP
         PRegState = strToHex(numbRepDict, byte) | PRegState
       
+      # Combines the current opcode's paramter bytes, e.g. the (0xYYZZ)
       byteParamList.insert(0, byte)
       internalByteSize = internalByteSize - 1
+      
+      # If we are done, then write it to the parsedOps dictionary
       if internalByteSize == 0:
         opParam = "".join(byteParamList)
+        
+        # Checks each parsed opcode and its paramters to see if it is a routine that changes
+        # the P register when returning.
         pRegRoutine = pRegRoutine + "(0x" + opParam + ")"
         if pRegRoutine in PRegSEPChangerDict:
           PRegState = strToHex(numbRepDict, PRegSEPChangerDict[pRegRoutine]) | PRegState
         
-        # Assume most of the JSR/JSL/BRA opcodes will change P register
+        # Assume most of the JSR/JSL/BRA opcodes will change P register to REP (0x30)
         # The BRA opcode is on a temporary solution, fix this when you have the addresses
         # working since we can use that to keep track of the state of the P register
         elif currentOp == 0x20 or currentOp == 0x22 or currentOp == 0x80:
           PRegState = (~ 0x30) & PRegState
         
-        parsedOps[address] = parsedOps[address] + "(0x" + opParam + ")\n"
-        #out.write("(0x" + opParam + ")\n")
-        address += (1 + (len(opParam) / 2))
+        # Make a copy of the opcode's parameter
+        copyOpParam = opParam
         
-        #if currentOp == 0x80:
-        #parsedOps[address + ]
+        # If the current opcode is a branching one, then we need to overwrite the opcode's parameter
+        # with a label and add the _a suffix to it
+        if currentOp in branchOps:
+          nextExecuteOpAddr = address + int((1 + (len(opParam) / 2)))
+          
+          # Attempt to access a label in an entry if it exist
+          try:
+            if not labelAddr[nextExecuteOpAddr + strToHex(numbRepDict, copyOpParam, unsignedFlag=False)] == None:
+              parsedOps[address] = parsedOps[address] + "_a (" + labelAddr[nextExecuteOpAddr + strToHex(numbRepDict, copyOpParam, unsignedFlag=False)]+ ")\n"
+          
+          # If not, then make one
+          except:
+            opParam = "Label_" + str(labelNumbs)
+            labelAddr[nextExecuteOpAddr + strToHex(numbRepDict, copyOpParam, unsignedFlag=False)] = opParam
+            labelNumbs += 1
+            parsedOps[address] = parsedOps[address] + "_a (" + opParam + ")\n"
+          
+        else:
+          parsedOps[address] = parsedOps[address] + " (0x" + opParam + ")\n"
+          #out.write("(0x" + opParam + ")\n")
         
+        address += int((1 + (len(copyOpParam) / 2)))
         byteParamList.clear()
         pRegRoutine = ""
       continue
@@ -218,19 +269,25 @@ if __name__ == "__main__":
     # This section is where we determine how many params the Opcode takes
     currentOp = strToHex(numbRepDict, byte)
     special8BitOps = False
+    
+    # If the opcode does not take a parameter, ex. TDC, PLD, RTL
     if byte in noParamOps:
       byteSizeParam = 0
       
-      parsedOps[address] = "  " + regularOps[byte] + " "
+      parsedOps[address] = "  " + regularOps[byte] + " \n"
+      address += 1
       #out.write("\t" + regularOps[byte] + "\n")
       
       continue
       
+    # If the opcode takes 1 byte, ex. REP, LDA_8, BRA
     if byte in oneParamOps:
       byteSizeParam = 1
       internalByteSize = 1
       
+    # If the opcode takes 2 bytes, ex LDA_i, JMP, ADC_i
     if byte in twoParamOps:
+      # If the opcode can have both the _i and _8 suffix, check the P register and determine what to do
       if (byte in sharedARegOps and PRegState & 0x20 != 0) or (byte in sharedXYRegOps and PRegState & 0x10 != 0):
         byteSizeParam = 1
         internalByteSize = 1
@@ -239,22 +296,27 @@ if __name__ == "__main__":
         byteSizeParam = 2
         internalByteSize = 2
       
+    # If the opcode takes 3 bytes, ex LDA_al, JMP_l, ADC_xl
     if byte in threeParamOps:
       byteSizeParam = 3
       internalByteSize = 3
     
+    # Writes them into the parsedOps dictionary to be written to a file later
     if special8BitOps:
-      out.write(specialOps[byte] + " ")
+      parsedOps[address] = specialOps[byte] + " "
     else:
-      parsedOps[address] = "  " + regularOps[byte] + " "
+      parsedOps[address] = "  " + regularOps[byte]
       
       #out.write("\t" + regularOps[byte] + " ")
-      pRegRoutine = regularOps[byte] + " "
+      pRegRoutine = regularOps[byte]
   
-  for line in parsedOps:
-    out.write(parsedOps[line])
+  # When we are done parsing, we will write them to the output file.
+  for offset in parsedOps:
+    if offset in labelAddr:
+      out.write("\n" + labelAddr[offset] + ":\n" + parsedOps[offset])
+    else:
+      out.write(parsedOps[offset])
   
   out.write("}\n")
-  
   out.close()
   inputFile.close()
