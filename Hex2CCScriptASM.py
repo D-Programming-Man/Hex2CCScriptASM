@@ -1,29 +1,22 @@
 #!/usr/bin/env python
 import sys
+from math import ceil
 
-# Translates a string hex number into an integer
-def strToHex(numbRepDict, byte):
-  hiNybble = 0
-  loNybble = 0
+# Turns hex numbers that are represented in string into actual hex numbers
+# The hexNumb parameter needs to have the "0x" prefix ommited when passed to this function
+# because parsing in the byte values from the input file does not have the "0x" prefix
+def strToHex(numbRepDict, hexNumb, unsignedFlag=True):
+  hexNumbReturn = 0
+  for hex in hexNumb:
+    hexNumbReturn = (hexNumbReturn * 16) + numbRepDict[hex]
   
-  if len(byte) == 2:
-    if byte[0] in numbRepDict:
-      hiNybble = numbRepDict[byte[0]] * 16
-    else:
-      print("Symbol not supported in Hex: " + byte[0])
-      sys.exit()
-      
-    if byte[1] in numbRepDict:
-      loNybble = numbRepDict[byte[1]]
-    else:
-      print("Symbol not supported in Hex: " + byte[1])
-      sys.exit()
-      
-    return hiNybble + loNybble
-    
+  if unsignedFlag:
+    return hexNumbReturn
   else:
-    print("Parameter pass to strToHex() is not exactly of length two: " + byte)
-    sys.exit()
+    bitLength = ceil(len(hexNumb) / 2) * 8
+    if hexNumbReturn & (1 << (bitLength - 1)) == (1 << (bitLength - 1)):
+      hexNumbReturn *= -1
+    return hexNumbReturn
 
 if __name__ == "__main__":
   
@@ -177,8 +170,15 @@ if __name__ == "__main__":
   pRegRoutine = "" # Some routines changes the P register when jumping back
                    # Need to keep track of routines that does this
                    
+  address = 0    # Used as the key to the parsedOps dictionary. I would usually use a program counter to keep track of the
+                 # the lines, but since we have opcodes like BRA (0x03), this would mean that we are jumping forwards 3 bytes after the BRA parameter.
+                 # In this sense, we could use arithmetic to pattern match the address to add labels at those dictionary entries
+  labelNumbs = 0 # These are labels that will be inserted when it is neccessary 
   parsedOps = {} # Dictionary of lines to parsed ops
-  address = 0    # Address supplied by the command 
+                 # Key = address, Value = (Label: ) opcode
+                 # The standard 65816 ASM branch opcodes will be replaced with their _a counterparts in CCSript to make
+                 # things easier to find when you want to view the output file 
+  out.write("Your_Routine:{\n")
   
   for byte in asmOpBytes:
     
@@ -203,7 +203,14 @@ if __name__ == "__main__":
         # working since we can use that to keep track of the state of the P register
         elif currentOp == 0x20 or currentOp == 0x22 or currentOp == 0x80:
           PRegState = (~ 0x30) & PRegState
-        out.write("(0x" + opParam + ")\n")
+        
+        parsedOps[address] = parsedOps[address] + "(0x" + opParam + ")\n"
+        #out.write("(0x" + opParam + ")\n")
+        address += (1 + (len(opParam) / 2))
+        
+        #if currentOp == 0x80:
+        #parsedOps[address + ]
+        
         byteParamList.clear()
         pRegRoutine = ""
       continue
@@ -213,7 +220,10 @@ if __name__ == "__main__":
     special8BitOps = False
     if byte in noParamOps:
       byteSizeParam = 0
-      out.write(regularOps[byte] + "\n")
+      
+      parsedOps[address] = "  " + regularOps[byte] + " "
+      #out.write("\t" + regularOps[byte] + "\n")
+      
       continue
       
     if byte in oneParamOps:
@@ -236,8 +246,15 @@ if __name__ == "__main__":
     if special8BitOps:
       out.write(specialOps[byte] + " ")
     else:
-      out.write(regularOps[byte] + " ")
+      parsedOps[address] = "  " + regularOps[byte] + " "
+      
+      #out.write("\t" + regularOps[byte] + " ")
       pRegRoutine = regularOps[byte] + " "
+  
+  for line in parsedOps:
+    out.write(parsedOps[line])
+  
+  out.write("}\n")
   
   out.close()
   inputFile.close()
