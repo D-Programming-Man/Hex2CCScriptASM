@@ -26,8 +26,15 @@ def strToHex(numbRepDict, byte):
     sys.exit()
 
 if __name__ == "__main__":
+  
+  if not len(sys.argv) == 3:
+    print("\nUsage: python Hex2CCScriptASM.py <input file> <output file>")
+    print("Program Exiting...\n")
+    exit(0)
+  
   inputFile = open(sys.argv[1], "r")
   out = open(sys.argv[2], "w")
+  asmOpBytes = inputFile.read().split() # Separate each byte into a list
   
   # Numberical symbols in hex
   numbRepDict = {"0": 0, "1": 1, "2": 2, "3": 3, "4": 4,
@@ -163,13 +170,15 @@ if __name__ == "__main__":
   PRegSEPChangerDict = {"JSL (0xC2B66A)": "20"}
   
   PRegState = 0x00 # assume P register is 0x00 at the start
-  asmOpBytes = inputFile.read().split() # Separate each byte into a list
   currentOp = 0x00  # Current ASM Opcode
   byteSizeParam = 0 # How many bytes does the current ASM Opcode require
   internalByteSize = 0 # How many bytes left do we need to decode for that Opcode
   byteParamList = [] # The concat string of the opcode to be written to a file
   pRegRoutine = "" # Some routines changes the P register when jumping back
                    # Need to keep track of routines that does this
+                   
+  parsedOps = {} # Dictionary of lines to parsed ops
+  address = 0    # Address supplied by the command 
   
   for byte in asmOpBytes:
     
@@ -191,7 +200,7 @@ if __name__ == "__main__":
         
         # Assume most of the JSR/JSL/BRA opcodes will change P register
         # The BRA opcode is on a temporary solution, fix this when you have the addresses
-          # working since we can use that to keep track of the state of the P register
+        # working since we can use that to keep track of the state of the P register
         elif currentOp == 0x20 or currentOp == 0x22 or currentOp == 0x80:
           PRegState = (~ 0x30) & PRegState
         out.write("(0x" + opParam + ")\n")
