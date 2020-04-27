@@ -3,8 +3,7 @@ import sys
 from math import ceil
 
 '''
-TODO: . Fix JMP/JMP_l address jumping since they work on a specific address rather than offsets
-        like any of the branch opcodes like BRA, BEQ, etc.
+TODO: . Nothing yet
 '''
 
 # Turns hex numbers that are represented in string into actual hex numbers
@@ -25,8 +24,8 @@ def strToHex(numbRepDict, hexNumb, unsignedFlag=True):
 
 if __name__ == "__main__":
   
-  if not len(sys.argv) == 3:
-    print("\nUsage: python Hex2CCScriptASM.py <input file> <output file>")
+  if len(sys.argv) < 3 and len(sys.argv) > 4:
+    print("\nUsage: python Hex2CCScriptASM.py <input file> <output file> (base address)")
     print("Program Exiting...\n")
     exit(0)
   
@@ -160,9 +159,7 @@ if __name__ == "__main__":
   "A0": "LDY_8", "09": "ORA_8", "E9": "SBC_8"}
   
   # All branch/jump opcodes in hex representation
-  # Jump opcodes are harder to impmement because they go to a specific address rather than an
-  # offset of the next executable opcode's address
-  branchOps = [0x90, 0xB0, 0xF0, 0xD0, 0x30, 0x10, 0x50, 0x70, 0x80, 0x82] # 0x4C, 0x5C
+  branchOps = [0x90, 0xB0, 0xF0, 0xD0, 0x30, 0x10, 0x50, 0x70, 0x80, 0x82, 0x4C] # 0x5C
   
   '''
   All routines that uses the SEP opcode before returning to the routine that called it
@@ -181,30 +178,51 @@ if __name__ == "__main__":
   pRegRoutine = "" # Some routines changes the P register when jumping back
                    # Need to keep track of routines that does this
   
-  # Used as the key to the parsedOps/labelAddr dictionary. I would usually use a program counter to keep track of the
-  # the lines, but since we have opcodes like BRA (0x03), this would mean that we are jumping forwards 3 bytes after the BRA parameter.
-  # In this sense, we could use arithmetic to pattern match the address to add labels at those dictionary entries  
+  '''
+    Used as the key to the parsedOps/labelAddr dictionary. I would usually use a program counter to keep track of the
+    the lines, but since we have opcodes like BRA (0x03), this would mean that we are jumping forwards 3 bytes after the BRA parameter.
+    In this sense, we could use arithmetic to pattern match the address to add labels at those dictionary entries  
+  
+    If you did not supply an address to the program, then the base address will be 0,
+    otherwise, the base address will be the one supplied by the command line
+  '''
   address = 0
-                 
-  # These are labels that will be inserted when we encounter a branch opcode that branches to that
-  # address and so we will replace the numerical hex value in the opcode's parameter with the label
-  # instead. We also modify the branch opcode by adding the _a suffix to it.
+  cmdlineAddrFlag = False
+  try:
+    if sys.argv[3][0:2] == "0x":
+      address = strToHex(numbRepDict, sys.argv[3][2:len(sys.argv[3])].upper())
+    else:
+      address = strToHex(numbRepDict, sys.argv[3].upper())
+    cmdlineAddrFlag = True
+  except:
+    pass
+  
+  '''
+    These are labels that will be inserted when we encounter a branch opcode that branches to that
+    address and so we will replace the numerical hex value in the opcode's parameter with the label
+    instead. We also modify the branch opcode by adding the _a suffix to it.
+  '''
   labelNumbs = 0
   
-  # Dictionary of address to parsed ops
-  # Key = address, Value =  opcode
-  # The standard 65816 ASM branch opcodes will be replaced with their _a counterparts in CCSript to make
-  # things easier to find when you want to view the output file
+  '''
+    Dictionary of address to parsed ops
+    Key = address, Value =  opcode
+    The standard 65816 ASM branch opcodes will be replaced with their _a counterparts in CCSript to make
+    things easier to find when you want to view the output file
+  '''
   parsedOps = {}
   
-  # Dictionary that keeps track of addresses where to insert the Label
-  # Key = address, Value = Label
+  '''
+    Dictionary that keeps track of addresses where to insert the Label
+    Key = address, Value = Label
+  '''
   labelAddr = {}
   
-  # Alternatively, I could combine both of these dictionaries and have a tuple as the value of the address.
-  # Will think about this later
-  # someDict[address] = (label, parsed opcode and parameters, P register state)
-  
+  '''
+    Alternatively, I could combine both of these dictionaries and have a tuple as the value of the address.
+    Will think about this later
+    someDict[address] = (label, parsed opcode and parameters, P register state)
+  '''
   out.write("Your_Routine:{\n")
   
   for byte in asmOpBytes:
@@ -237,9 +255,6 @@ if __name__ == "__main__":
         elif currentOp == 0x20 or currentOp == 0x22 or currentOp == 0x80:
           PRegState = (~ 0x30) & PRegState
         
-        # Make a copy of the opcode's parameter
-        copyOpParam = opParam
-        
         # If the current opcode is a branching one, then we need to overwrite the opcode's parameter
         # with a label and add the _a suffix to it
         if currentOp in branchOps:
@@ -247,21 +262,33 @@ if __name__ == "__main__":
           
           # Attempt to access a label in an entry if it exist
           try:
-            if not labelAddr[nextExecuteOpAddr + strToHex(numbRepDict, copyOpParam, unsignedFlag=False)] == None:
-              parsedOps[address] = parsedOps[address] + "_a (" + labelAddr[nextExecuteOpAddr + strToHex(numbRepDict, copyOpParam, unsignedFlag=False)]+ ")\n"
+            if not labelAddr[nextExecuteOpAddr + strToHex(numbRepDict, opParam, unsignedFlag=False)] == None:
+              parsedOps[address] = parsedOps[address] + "_a (" + labelAddr[nextExecuteOpAddr + strToHex(numbRepDict, opParam, unsignedFlag=False)]+ ")\n"
           
           # If not, then make one
           except:
-            opParam = "Label_" + str(labelNumbs)
-            labelAddr[nextExecuteOpAddr + strToHex(numbRepDict, copyOpParam, unsignedFlag=False)] = opParam
+            labelName = "Label_" + str(labelNumbs)
+            
+            if currentOp == 0x4C: # JMP
+              if not cmdlineAddrFlag:
+                print("\nThe program encountered a JMP instruction while you did not supply a base address.")
+                print("Usage: python Hex2CCScriptASM.py <input file> <output file> (base address)")
+                print("Program Exiting...\n")
+                exit(0)
+              addrBank = address & 0xFF0000
+              labelAddr[strToHex(numbRepDict, opParam) + addrBank] = labelName
+              parsedOps[address] = parsedOps[address] + " (" + labelName + ")\n"
+            else:
+              labelAddr[nextExecuteOpAddr + strToHex(numbRepDict, opParam, unsignedFlag=False)] = labelName
+              parsedOps[address] = parsedOps[address] + "_a (" + labelName + ")\n"
+              
             labelNumbs += 1
-            parsedOps[address] = parsedOps[address] + "_a (" + opParam + ")\n"
           
         else:
           parsedOps[address] = parsedOps[address] + " (0x" + opParam + ")\n"
           #out.write("(0x" + opParam + ")\n")
         
-        address += int((1 + (len(copyOpParam) / 2)))
+        address += int((1 + (len(opParam) / 2)))
         byteParamList.clear()
         pRegRoutine = ""
       continue
@@ -303,7 +330,7 @@ if __name__ == "__main__":
     
     # Writes them into the parsedOps dictionary to be written to a file later
     if special8BitOps:
-      parsedOps[address] = specialOps[byte] + " "
+      parsedOps[address] = "  " + specialOps[byte]
     else:
       parsedOps[address] = "  " + regularOps[byte]
       
