@@ -9,17 +9,29 @@ This code is not used as a disassembly for the EarthBound ROM, someone is alread
 
 ### HOW TO RUN:
 Comiple and run it like so (I use python3 to compile it, but I'm pretty sure that lower version of python would work as well):
-- python3 Hex2CCScriptASM.py (input file) (output file)
+- python3 Hex2CCScriptASM.py (input file) (output file) (optional: base address)
   
 where:
-- (output file) is a text file that contains the psudo CCScript assembly code that it can interpret
-  - This file can be created when compiled and ran if the output file does not exist.
 
 - (input file) is a text file that contains only bytes represented in hex
   - You can copy bytes from the EarthBound ROM with a hex editor and then paste it into the input file
   - For example: say we have a text file called "test.txt" and it only contains these two bytes: C2 31
   - If you run this, the (output file) will contain this: REP (0x31)
-  
+
+- (output file) is a text file that contains the psudo CCScript assembly code that it can interpret
+  - This file can be created when compiled and ran if the output file does not exist.
+
+- (optional: base address)
+  - The address of bytes that you are copying from. The address takes in the form of 0x(address) or just the (address)
+    without the "0x" prefix.
+  - For example: if you copied bytes from 0x123456, you would supply the base address parameter like so
+    - python3 Hex2CCScriptASM.py input.txt output.txt 0x123456
+    - python3 Hex2CCScriptASM.py input.txt output.txt 123456
+    - Either of the two command line above would work.
+  - I tried to implement the "$" prefix, but somehow the command line doesn't recognize it.
+  - For example:
+    - python3 Hex2CCScriptASM.py input.txt output.txt $123456
+    - This will not work for some reason
 ### Future Plans:
 - ~Most of these features are going to be replicated from the EarthBound ROM Explorer such as: addresses and labels~
   - How the labels are ordered aren't the same, but the branching of the labels are the same. This is a good thing!
@@ -28,4 +40,4 @@ where:
   - I'm not sure what to make of this myself, but hopefully this idea comes back to me.
 - BRK opcodes are appearing when there are inconsistent SEP/REP within the routine when parsing. 
   - When encountering BRK opcodes, try to add a buffer to detect them and merge with the previous opcode and update the P register
-- JMP opcodes are not working since they are address specific rather than offset addresses like branch opcodes, e.g. BRA, BEQ, etc. 
+- ~JMP opcodes are not working since they are address specific rather than offset addresses like branch opcodes, e.g. BRA, BEQ, etc.~ 
