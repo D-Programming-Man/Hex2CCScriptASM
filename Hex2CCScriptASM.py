@@ -21,6 +21,17 @@ def strToHex(numbRepDict, hexNumb, unsignedFlag=True):
     if hexNumbReturn & (1 << (bitLength - 1)) == (1 << (bitLength - 1)):
       hexNumbReturn = (hexNumbReturn - strToHex(numbRepDict, "F" * int((bitLength / 4)))) - 1
     return hexNumbReturn
+    
+# Turns hex/integer numbers into hex numbers in their string representation
+# E.g. 0x10 to "10" without the "0x" prefix
+def hexToStr(numbRepDict, hexNumb):
+  hexNumbReturn = []
+  while not hexNumb / 16 == 0:
+    hexNumbReturn.insert(0, numbRepDict[hexNumb & 0x0F])
+    hexNumb = hexNumb >> 4
+  if len(hexNumbReturn) == 0:
+    hexNumbReturn.insert(0, numbRepDict[hexNumb & 0x0F])
+  return "".join(hexNumbReturn)
 
 if __name__ == "__main__":
   
@@ -34,9 +45,16 @@ if __name__ == "__main__":
   asmOpBytes = inputFile.read().split() # Separate each byte into a list
   
   # Numberical symbols in hex
-  numbRepDict = {"0": 0, "1": 1, "2": 2, "3": 3, "4": 4,
-  "5": 5, "6": 6, "7": 7, "8": 8, "9": 9,"A": 10, "B": 11,
-  "C": 12, "D": 13, "E": 14, "F": 15}
+  numbRepDict = {
+  "0": 0, "1": 1, "2": 2, "3": 3, "4": 4,
+  "5": 5, "6": 6, "7": 7, "8": 8, "9": 9,
+  "A": 10, "B": 11, "C": 12, "D": 13, "E": 14,
+  "F": 15,
+  0: "0", 1: "1", 2: "2", 3: "3", 4: "4",
+  5: "5", 6: "6", 7: "7", 8: "8", 9: "9",
+  10: "A", 11: "B", 12: "C", 13: "D", 14: "E", 
+  15: "F"
+  }
   
   # ASM Opcodes that don't take a parameter
   noParamOps = ["0A", "00", "18", "D8",
@@ -166,6 +184,7 @@ if __name__ == "__main__":
   Some routines do a SEP/REP and then run a routine that changes the P register
     and so when it returns the P register is inconsistant and so that's why some
     of the routines in the EB ROM Explorer has weird opcodes in place
+  There might be more routines that are like this, have to keep checking
   # Key = JSR/JSL (address), Value = byte param used for SEP opcode in that routine when returning
   '''
   PRegSEPChangerDict = {"JSL (0xC2B66A)": "20"}
@@ -218,13 +237,14 @@ if __name__ == "__main__":
   '''
   labelAddr = {}
   
-  '''
-    Alternatively, I could combine both of these dictionaries and have a tuple as the value of the address.
-    Will think about this later
-    someDict[address] = (label, parsed opcode and parameters, P register state)
-  '''
-  out.write("Your_Routine:{\n")
   
+  '''
+   Dictionary that keeps track of the P register state at the branch instruction so that 
+     the instruction at the destination address in consistent.
+   Key = destination address, Value = P register state (PRegState)
+  '''
+  branchPRegState = {}
+
   for byte in asmOpBytes:
     
     # This section is where we add the parameters to the file
@@ -250,9 +270,7 @@ if __name__ == "__main__":
           PRegState = strToHex(numbRepDict, PRegSEPChangerDict[pRegRoutine]) | PRegState
         
         # Assume most of the JSR/JSL/BRA opcodes will change P register to REP (0x30)
-        # The BRA opcode is on a temporary solution, fix this when you have the addresses
-        # working since we can use that to keep track of the state of the P register
-        elif currentOp == 0x20 or currentOp == 0x22 or currentOp == 0x80:
+        elif currentOp == 0x20 or currentOp == 0x22:
           PRegState = (~ 0x30) & PRegState
         
         # If the current opcode is a branching one, then we need to overwrite the opcode's parameter
@@ -277,16 +295,16 @@ if __name__ == "__main__":
                 exit(0)
               addrBank = address & 0xFF0000
               labelAddr[strToHex(numbRepDict, opParam) + addrBank] = labelName
+              branchPRegState[strToHex(numbRepDict, opParam) + addrBank] = PRegState
               parsedOps[address] = parsedOps[address] + " (" + labelName + ")\n"
             else:
               labelAddr[nextExecuteOpAddr + strToHex(numbRepDict, opParam, unsignedFlag=False)] = labelName
+              branchPRegState[nextExecuteOpAddr + strToHex(numbRepDict, opParam, unsignedFlag=False)] = PRegState
               parsedOps[address] = parsedOps[address] + "_a (" + labelName + ")\n"
               
             labelNumbs += 1
-          
         else:
           parsedOps[address] = parsedOps[address] + " (0x" + opParam + ")\n"
-          #out.write("(0x" + opParam + ")\n")
         
         address += int((1 + (len(opParam) / 2)))
         byteParamList.clear()
@@ -297,14 +315,19 @@ if __name__ == "__main__":
     currentOp = strToHex(numbRepDict, byte)
     special8BitOps = False
     
+    # Attempts to update the P register if the branchPRegState dictionary contains a P register state
+    try:
+      PRegState = branchPRegState[address]
+    # If not, then do nothing
+    except:
+      pass
+    
     # If the opcode does not take a parameter, ex. TDC, PLD, RTL
     if byte in noParamOps:
       byteSizeParam = 0
-      
+        
       parsedOps[address] = "  " + regularOps[byte] + " \n"
       address += 1
-      #out.write("\t" + regularOps[byte] + "\n")
-      
       continue
       
     # If the opcode takes 1 byte, ex. REP, LDA_8, BRA
@@ -314,6 +337,7 @@ if __name__ == "__main__":
       
     # If the opcode takes 2 bytes, ex LDA_i, JMP, ADC_i
     if byte in twoParamOps:
+    
       # If the opcode can have both the _i and _8 suffix, check the P register and determine what to do
       if (byte in sharedARegOps and PRegState & 0x20 != 0) or (byte in sharedXYRegOps and PRegState & 0x10 != 0):
         byteSizeParam = 1
@@ -333,11 +357,15 @@ if __name__ == "__main__":
       parsedOps[address] = "  " + specialOps[byte]
     else:
       parsedOps[address] = "  " + regularOps[byte]
-      
-      #out.write("\t" + regularOps[byte] + " ")
       pRegRoutine = regularOps[byte]
   
   # When we are done parsing, we will write them to the output file.
+  try:
+    out.write("//Base Address: 0x" + sys.argv[3].upper() + "\n\n")
+  except:
+    out.write("//Base Address: Not Supplied\n\n")
+  out.write("Your_Routine:{\n")
+  
   for offset in parsedOps:
     if offset in labelAddr:
       out.write("\n" + labelAddr[offset] + ":\n" + parsedOps[offset])
