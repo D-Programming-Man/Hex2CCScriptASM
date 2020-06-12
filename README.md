@@ -34,10 +34,8 @@ where:
     - This will not work for some reason
 ### Future Plans:
 - ~Most of these features are going to be replicated from the EarthBound ROM Explorer such as: addresses and labels~
-  - How the labels are ordered aren't the same, but the branching of the labels are the same. This is a good thing!
 - ~Turn the output file into a CCScript block code that can be referenced as a label~
-- Make table addresses turn into labels so it can be easily identifiable
-  - I'm not sure what to make of this myself, but hopefully this idea comes back to me.
-- BRK opcodes are appearing when there are inconsistent SEP/REP within the routine when parsing. 
-  - When encountering BRK opcodes, try to add a buffer to detect them and merge with the previous opcode and update the P register
+- ~Make table addresses turn into labels so it can be easily identifiable~
+- ~BRK opcodes are appearing when there are inconsistent SEP/REP within the routine when parsing.~
 - ~JMP opcodes are not working since they are address specific rather than offset addresses like branch opcodes, e.g. BRA, BEQ, etc.~ 
+- Replace JSR opcodes to thier JSL equivalent in the [ASMref.ccs](https://gist.github.com/HS39/32436ae8b27aac7fb956bc03cf4c8244) file from the [CoilSnake Library](https://github.com/pk-hack/CoilSnake/wiki/CCScript-Library)
