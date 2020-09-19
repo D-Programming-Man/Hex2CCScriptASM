@@ -179,6 +179,9 @@ if __name__ == "__main__":
   # All branch/jump opcodes in hex representation
   branchOps = [0x90, 0xB0, 0xF0, 0xD0, 0x30, 0x10, 0x50, 0x70, 0x80, 0x82, 0x4C] # 0x5C
   
+  # All branch/jump instructions in strings. Used for checking if an opcode is
+  # one of these when writing out to the output file
+  branchStrOps = ["BRA_a", "BCC_a", "BCS_a", "BEQ_a", "BMI_a", "BNE_a", "BPL_a", "BRL_a", "BVC_a", "BVS_a", "JMP"]
   '''
   All routines that uses the SEP opcode before returning to the routine that called it
   Some routines do a SEP/REP and then run a routine that changes the P register
@@ -278,7 +281,7 @@ if __name__ == "__main__":
         if currentOp in branchOps:
           nextExecuteOpAddr = address + int((1 + (len(opParam) / 2)))
           
-          # Attempt to access a label in an entry if it exist
+          # Attempt to access a label in an entry if it exist for Branch instructions (besides JMPs)
           try:
             if not labelAddr[nextExecuteOpAddr + strToHex(numbRepDict, opParam, unsignedFlag=False)] == None:
               parsedOps[address] = parsedOps[address] + "_a (" + labelAddr[nextExecuteOpAddr + strToHex(numbRepDict, opParam, unsignedFlag=False)]+ ")\n"
@@ -294,18 +297,29 @@ if __name__ == "__main__":
                 print("Program Exiting...\n")
                 exit(0)
               addrBank = address & 0xFF0000
-              labelAddr[strToHex(numbRepDict, opParam) + addrBank] = labelName
-              branchPRegState[strToHex(numbRepDict, opParam) + addrBank] = PRegState
-              parsedOps[address] = parsedOps[address] + " (" + labelName + ")\n"
+              
+              # Attempts to access an address that has a label for the JMP instruction
+              try:
+                if not labelAddr[addrBank + strToHex(numbRepDict, opParam)] == None:
+                  branchPRegState[addrBank + strToHex(numbRepDict, opParam)] = PRegState
+                  parsedOps[address] = parsedOps[address] + " (" + labelAddr[addrBank + strToHex(numbRepDict, opParam)] + ")\n"
+              # If there isn't one, then make one
+              except:
+                labelAddr[addrBank + strToHex(numbRepDict, opParam)] = labelName
+                branchPRegState[addrBank + strToHex(numbRepDict, opParam)] = PRegState
+                parsedOps[address] = parsedOps[address] + " (" + labelName + ")\n"
+                labelNumbs += 1
+               
+            # If there isn't any labels to branch to, then make a label for the Branch instructions
             else:
               labelAddr[nextExecuteOpAddr + strToHex(numbRepDict, opParam, unsignedFlag=False)] = labelName
               branchPRegState[nextExecuteOpAddr + strToHex(numbRepDict, opParam, unsignedFlag=False)] = PRegState
               parsedOps[address] = parsedOps[address] + "_a (" + labelName + ")\n"
-              
-            labelNumbs += 1
+              labelNumbs += 1
+        
+        # If the current opcode isn't a branch or jump, then parse it as normal
         else:
           parsedOps[address] = parsedOps[address] + " (0x" + opParam + ")\n"
-        
         address += int((1 + (len(opParam) / 2)))
         byteParamList.clear()
         pRegRoutine = ""
@@ -360,6 +374,16 @@ if __name__ == "__main__":
       pRegRoutine = regularOps[byte]
   
   # When we are done parsing, we will write them to the output file.
+  # Make a table that maps each labels sequentially like how the EB ROM Explorer does it
+  sortedAddr = list(labelAddr.keys())
+  sortedAddr.sort()
+  organizedLabels = {}
+  labelCounter = 0
+  for label in sortedAddr:
+    organizedLabels[labelAddr[label]] = "Label_" + str(labelCounter)
+    labelCounter += 1
+  
+  # Writing to the file
   try:
     out.write("//Base Address: 0x" + sys.argv[3].upper() + "\n\n")
   except:
@@ -367,8 +391,18 @@ if __name__ == "__main__":
   out.write("Your_Routine:{\n")
   
   for offset in parsedOps:
+    # Figure out if the instruction is any of the branching opcodes
+    # If it is, then remap the labels in the parenthesis
+    firstParen = parsedOps[offset].find("(")
+    opcode = parsedOps[offset][2:firstParen - 1]
+    if firstParen > 0 and opcode in branchStrOps:
+      label = parsedOps[offset][firstParen + 1:-2]
+      label = organizedLabels[label]
+      parsedOps[offset] = "  " + opcode + " (" + label + ")\n"
+        
+    # Print out each instruction per line
     if offset in labelAddr:
-      out.write("\n" + labelAddr[offset] + ":\n" + parsedOps[offset])
+      out.write("\n" + organizedLabels[labelAddr[offset]] + ":\n" + parsedOps[offset])
     else:
       out.write(parsedOps[offset])
   
